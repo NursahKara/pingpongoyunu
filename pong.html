@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<title>Pong</title>
+	<style>
+	canvas {
+		display: block;
+		position: absolute;
+		margin: auto;
+		top: 0;
+		bottom: 0;
+		left: 0;
+		right: 0;
+	}
+	</style>
+</head>
+<body>
+<script>
+var
+
+WIDTH  = 700,  //canvasın genişliği
+HEIGHT = 600,  //canvasın yüksekliği
+pi = Math.PI,
+UpArrow   = 38,   //yukarı ok tuşu     ,  37=sol tuş
+DownArrow = 40,  //aşağı ok tuşu       ,  39=sağ tuş
+
+//oyunun elementleri
+canvas,
+ctx,
+keystate,
+
+
+player = {
+	x: null,
+	y: null,
+	width:  20,
+	height: 100,  //20 genişliğinde 100 yüksekliğinde oyuncu
+	
+
+	update: function() {
+		if (keystate[UpArrow]) this.y -= 15;   //yukarı ok tuşuna basıldığında y'i 15 azalt. yukarı çıksın
+		if (keystate[DownArrow]) this.y += 15;  //aşağı ok tuşuna basıldığında y'i 15 arttır. aşağı insin
+		
+		this.y = Math.max(Math.min(this.y, HEIGHT - this.height), 0); //kullanıcının dışarı çıkmasını önlüyor
+	},
+	//oyuncuyu çizer
+	draw: function() {
+		ctx.fillRect(this.x, this.y, this.width, this.height); //20ye 100lük bir dikdörtgen çizer
+	}
+},
+
+ai = {
+	x: null,
+	y: null,
+	width:  20,
+	height: 100,
+	
+	update: function() {
+		// ideal pozisyonu hesapla
+		var desty = ball.y - (this.height - ball.side)*0.5;  //rakibin boyundan topun boyunu çıkar ve 2 ye böl yani rakipte topu ortala ve bunu topun y konumundan çıkar
+		
+		this.y += (desty - this.y) * 0.1;  //hareketi sağlar
+		
+		this.y = Math.max(Math.min(this.y, HEIGHT - this.height), 0); //oyun dışına çıkmasını önler
+
+
+	},
+	//çizim fonksiyonu
+	draw: function() {
+		ctx.fillRect(this.x, this.y, this.width, this.height);
+	}
+},
+
+ball = {
+	x:   null,
+	y:   null,
+	vel: null,
+	side:  20,
+	speed: 12,
+
+	//topu belirtilen tarafa doğru servis eder
+	serve: function(side) {
+		// x ve y konumunu ayarlar 
+		var r = Math.random();
+		this.x = side===1 ? player.x+player.width : ai.x - this.side;
+		this.y = (HEIGHT - this.side)*r;
+		// y ekseninde düşük/yüksek açı hesaplar
+		// açı hesapları
+		var phi = 0.1*pi*(1 - 2*r);
+		// hız yönü ve büyüklüğü
+		this.vel = {
+			x: side*this.speed*Math.cos(phi),
+			y: this.speed*Math.sin(phi)
+		}
+	},
+	
+	update: function() {
+		// o anki velocitye göre konumuu update et
+		this.x += this.vel.x;
+		this.y += this.vel.y;
+		//y koordinatı dışında mı?
+		if (0 > this.y || this.y+this.side > HEIGHT) {
+			
+			var offset = this.vel.y < 0 ? 0 - this.y : HEIGHT - (this.y+this.side);
+			this.y += 2*offset;
+			// y hızını yansıt
+			this.vel.y *= -1;
+		}
+		
+		// axis aligned bounding boxex (AABB)
+		var AABBIntersect = function(ax, ay, aw, ah, bx, by, bw, bh) {
+			return ax < bx+bw && ay < by+bh && bx < ax+aw && by < ay+ah;
+		};
+		
+		var pdle = this.vel.x < 0 ? player : ai;
+		if (AABBIntersect(pdle.x, pdle.y, pdle.width, pdle.height,
+				this.x, this.y, this.side, this.side)
+		) {	
+			// x eksenini set et ve yansıma açısını hesapla
+			this.x = pdle===player ? player.x+player.width : ai.x - this.side;
+			var n = (this.y+this.side - pdle.y)/(pdle.height+this.side);
+			var phi = 0.25*pi*(2*n - 1); // pi/4 = 45
+			
+			var smash = Math.abs(phi) > 0.2*pi ? 1.5 : 1;
+			this.vel.x = smash*(pdle===player ? 1 : -1)*this.speed*Math.cos(phi);
+			this.vel.y = smash*this.speed*Math.sin(phi);
+		}
+		//top x ekseninde çıkarsa resetle
+		if (0 > this.x+this.side || this.x > WIDTH) {
+			this.serve(pdle===player ? 1 : -1);
+		}
+	},
+	//topu çiz
+	draw: function() {
+		ctx.fillRect(this.x, this.y, this.side, this.side);
+	}
+};
+//oyuna başla
+function main() {
+	// oyun canvasını create ve init et
+	canvas = document.createElement("canvas");
+	canvas.width = WIDTH;  
+	canvas.height = HEIGHT;
+	ctx = canvas.getContext("2d"); //2 boyutlu
+	document.body.appendChild(canvas);
+	keystate = {};
+	
+	document.addEventListener("keydown", function(evt) {
+		keystate[evt.keyCode] = true;
+	});
+	document.addEventListener("keyup", function(evt) {
+		delete keystate[evt.keyCode];
+	});
+	init(); 
+	// game loop fonksiyonu
+	var loop = function() {
+		update();
+		draw();
+		window.requestAnimationFrame(loop, canvas);
+	};
+	window.requestAnimationFrame(loop, canvas);
+}
+//oyunu başlatan fonk.
+function init() {
+	player.x = player.width;  //oyuncunun xteki yerini  oyuncunun enine eşitle
+	player.y = (HEIGHT - player.height)/2;  // canvasın boyundan oyuncunun boyunu çıkar ve 2ye böl yani oyuncuyu canvasta ortala
+	ai.x = WIDTH - (player.width + ai.width);  //rakibin xteki yerini tüm enden oyuncunun ve rakibin enini çıkararak bul
+	ai.y = (HEIGHT - ai.height)/2; //rakibin ydeki yerini canvasın boyundan rakibin boyunu çıkarıp 2ye bölerek bul yani rakibin yerini canvasta ortala
+	ball.serve(1); //topu servis et
+}
+//oyunun tüm elementlerini update et
+function update() {
+	ball.update();
+	player.update();
+	ai.update();
+}
+
+function draw() {
+	ctx.fillRect(0, 0, WIDTH, HEIGHT);  //contexti 0a 0 dan başlat
+	ctx.save();
+	ctx.fillStyle = "#fff";  //oyuncuları ve tüm içeriği beyaz yap
+	ball.draw();  //topu çiz
+	player.draw(); 	//oyuncuyu çiz
+	ai.draw(); //rakibi çiz
+	// draw the net
+	var w = 4;
+	var x = (WIDTH - w)*0.5;  //2ye bölmekle aynı. çizgileri x  ekseninde ortalar
+	var y = 0;
+	var step = HEIGHT/20; // ortaya 20 tane kısa çizgi 
+	while (y < HEIGHT) {
+		ctx.fillRect(x, y+step*0.25, w, step*0.5);
+		y += step;
+	}
+	ctx.restore();
+}
+// main fonk. çağır ve oyunu başlat
+main();
+</script>
+</body>
+</html>
